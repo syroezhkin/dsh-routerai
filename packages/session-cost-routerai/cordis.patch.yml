@@ -1,0 +1,28 @@
+# The `dsh-session-cost-routerai` bundle patch: mounts the cost meter.
+#
+# EXACTLY ONE ROW, and that is load-bearing. This package declares `dsh.client`,
+# so the client-module scanner resolves a row name to a package and refuses two
+# sources for one package ("resolves from multiple active Loader sources"). A
+# second row naming this package would not merely be redundant — it would fail
+# the composition and abort boot. Both registration surfaces therefore live in
+# the single `index.js` below.
+#
+# The row name is a BARE package name, which is both the shipped-bundle
+# convention and a hard requirement here: `exactPackageSpecifier` in the client
+# scanner returns undefined for a subpath like `pkg/sub`, so a subpath row would
+# silently never contribute a browser half.
+
+- insert:
+    - id: session-cost
+      name: 'dsh-session-cost-routerai'
+      config:
+        # Credential reference for the key's own spend and balance. Rates come
+        # from the public catalogue and need no credential.
+        apiKeyEnv: DEEPSEEK_API_KEY
+        # RouterAI API root. Override to point at a compatible gateway.
+        baseURL: https://routerai.ru/api/v1
+        # Model to price when a session's own route cannot be resolved. `null`
+        # (the default) means "ask the session" and fall back to the first
+        # catalogue entry with a tariff. Set an explicit id only if you want one
+        # fixed route regardless of what the session runs.
+        model: null

@@ -1,0 +1,16 @@
+# Dependencies are installed per-machine, never committed:
+# `dsh plugin add` runs pnpm in the profile, which installs both the packages
+# and the peer dependencies projected from the dsh installation.
+node_modules/
+.npm/
+.pnpm-store/
+
+# Build and tooling detritus.
+*.log
+.DS_Store
+.env
+.env.*
+
+# npm publish artifacts from `npm pack` / `pnpm publish`.
+*.tgz
+pnpm-publish-summary.json

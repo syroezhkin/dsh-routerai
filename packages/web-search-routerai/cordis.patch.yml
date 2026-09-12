@@ -1,0 +1,44 @@
+# The `dsh-web-search-routerai` bundle patch: registers the RouterAI search
+# provider and points the shared `web` row at it.
+#
+# Loaded as one bundle layer over `dsh-base`. Rows are addressed by bare package
+# name, the convention every shipped bundle follows, so the loader resolves this
+# package out of the profile's `node_modules`.
+#
+# This package declares NO `dsh.client`. That is deliberate, not an omission:
+# the provider is host-side only, so the client-module scanner never sees this
+# package and the "one source per bundle-declaring package" rule it enforces
+# does not apply here. A browser half would be dead weight.
+#
+# SELECTING THE PROVIDER BELONGS HERE, not to the session-cost package. If the
+# cost package chose the search provider, it could not be installed without this
+# one, and the two are meant to be independent.
+
+- insert:
+    - id: web-search-routerai
+      name: 'dsh-web-search-routerai'
+      config:
+        # Credential reference resolved through the credentials service, the
+        # same store the Models page writes. Override for a different account.
+        apiKeyEnv: DEEPSEEK_API_KEY
+        # RouterAI API root. Override to point at a compatible gateway.
+        baseURL: https://routerai.ru/api/v1
+        # Model used for the auxiliary search request itself. RouterAI bills
+        # this as a normal chat completion; any catalogue model works.
+        model: "~deepseek/deepseek-v4-flash-latest"
+        # Requested-result cap, and a cost knob: RouterAI charges
+        # `2.2 RUB * ceil(max_results / 5)` per query and bills the REQUESTED
+        # count, so 5 keeps every search in the first tier. `dsh-tool-web` asks
+        # for 8 by default; this ceiling clamps it down in the provider.
+        maxResults: 5
+        # Search engine. `native` returned zero citations in every live run on
+        # this route; `exa` returned citations every time.
+        engine: exa
+
+# Point the shared `web` row at the provider registered above. `fetchProvider`
+# is restated because a patch replaces the row's whole config rather than
+# merging into it — dropping it here would silently remove the fetch provider.
+- id: web
+  config:
+    searchProvider: routerai-web
+    fetchProvider: http
