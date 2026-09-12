@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-cost-routerai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Session cost in roubles beside the composer, priced from live RouterAI rates",
   "type": "module",
   "main": "index.js",
@@ -22,6 +22,11 @@
     "cordis"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syroezhkin/dsh-routerai.git",
+    "directory": "packages/session-cost-routerai"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

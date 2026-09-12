@@ -1,6 +1,6 @@
 {
   "name": "dsh-web-search-routerai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "RouterAI web-search provider for the DeepSeek Harness: server-side retrieval through plugins:[{id:\"web\"}]",
   "type": "module",
   "main": "index.js",
@@ -20,6 +20,11 @@
     "cordis"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syroezhkin/dsh-routerai.git",
+    "directory": "packages/web-search-routerai"
+  },
   "peerDependencies": {
     "@deepseek-ai/dsh-web": "^0.1.5-rc.2"
   },
