@@ -30,10 +30,13 @@ package as a profile layer, because each manifest declares `dsh.bundle`. Restart
 dsh plugin --profile web add dsh-web-search-routerai dsh-session-cost-routerai
 ```
 
-Before the packages are on the registry, install straight from git:
+Before the packages are on the registry, install a workspace member straight from git. The `#path:`
+selector is required: the repository root is a private workspace manifest that declares no `dsh.bundle`,
+so installing it bare would register nothing.
 
 ```sh
-dsh plugin --profile web add git+https://github.com/syroezhkin/dsh-routerai.git
+dsh plugin --profile web add "github:syroezhkin/dsh-routerai#path:packages/web-search-routerai"
+dsh plugin --profile web add "github:syroezhkin/dsh-routerai#path:packages/session-cost-routerai"
 ```
 
 ## Configure
