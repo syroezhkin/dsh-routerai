@@ -25,6 +25,14 @@ dsh plugin --profile web add dsh-web-search-routerai
 `dsh plugin` forwards to pnpm in the profile directory and then registers the package as a profile layer
 automatically, because the manifest declares `dsh.bundle`. Restart DSH afterwards.
 
+## Requirements
+
+DSH with the `ctx.web` search seam (0.2.x). The `@deepseek-ai/dsh-web` module is provided by the running
+host — `$DSH_HOME/profiles/node_modules/@deepseek-ai/*` are symlinks into the installation — so this
+package deliberately declares no dependency or peer range on it: a pin would only warn on every DSH
+pre-release without buying anything. Without the seam the plugin parks through `inject: ['web']` instead
+of failing boot.
+
 ## Configure
 
 The row is `web-search-routerai` in the profile's `cordis.patch.yml`, or the home-level file:
@@ -52,6 +60,9 @@ the environment named by `apiKeyEnv`. To bypass both, set a literal:
 
 Prefer the credentials store: a literal key in a config file tends to end up in version control.
 
+The provider declares a `title` and a localized `description`, so the Settings provider picker shows
+"RouterAI" with a one-line summary instead of the bare registry id `routerai-web`.
+
 ## Cost
 
 RouterAI bills search in tiers of five results:
@@ -63,9 +74,9 @@ cost = 2.2 RUB × ceil(max_results / 5)
 Measured at `max_results` 5 / 6 / 10 / 11 / 15 → 2.20 / 4.39 / 4.41 / 6.60 RUB. Billing follows the
 **requested** count, not the returned one: a query with no hits at `max_results=8` still charged 4.4 RUB.
 
-DSH's `tool-web` asks for 8 results by default, which would land in the second tier. This provider clamps
-every request down to `maxResults`, so `5` keeps each search in the cheapest tier. Raising it to 6 or more
-doubles the per-query cost; each further five results adds another 2.2 RUB.
+DSH's `tool-web` asks for 10 results by default (0.2.x), which would land in the second tier. This provider
+clamps every request down to `maxResults`, so `5` keeps each search in the cheapest tier. Raising it to 6
+or more doubles the per-query cost; each further five results adds another 2.2 RUB.
 
 ## Engine
 

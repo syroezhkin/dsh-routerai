@@ -29,7 +29,7 @@
         # Requested-result cap, and a cost knob: RouterAI charges
         # `2.2 RUB * ceil(max_results / 5)` per query and bills the REQUESTED
         # count, so 5 keeps every search in the first tier. `dsh-tool-web` asks
-        # for 8 by default; this ceiling clamps it down in the provider.
+        # for 10 by default; this ceiling clamps it down in the provider.
         maxResults: 5
         # Search engine. `native` returned zero citations in every live run on
         # this route; `exa` returned citations every time.

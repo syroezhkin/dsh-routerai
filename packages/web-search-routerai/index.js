@@ -24,9 +24,9 @@
  * Verified at max_results 5/6/10/11/15 -> 2.20/4.39/4.41/6.60 RUB. Billing
  * follows the REQUESTED count, not the returned one: a query with no hits at
  * `max_results=8` still charged 4.4 RUB. `dsh-tool-web` sends its own
- * `searchMaxResults` (default 8) as `request.maxResults`, which would land in
- * the second tier, so this provider clamps to `maxResults` below rather than
- * leaving it to preset config.
+ * `searchMaxResults` (default 10 in DSH 0.2.x) as `request.maxResults`, which
+ * would land in the second tier, so this provider clamps to `maxResults` below
+ * rather than leaving it to preset config.
  *
  * ENGINE
  * `engine: "native"` returned ZERO citations in 6 of 6 live runs (empty body,
@@ -170,6 +170,14 @@ export function apply(ctx, config = {}) {
 
   const provider = {
     id: ROUTERAI_SEARCH_PROVIDER_ID,
+    // Provider-picker metadata: without these the Web settings list shows the
+    // bare registry id, which tells a user nothing about where the search goes
+    // or what it costs.
+    title: 'RouterAI',
+    description: {
+      en: 'Web search through RouterAI (Exa engine). Billed per query (~2.2 RUB); results are capped to keep the cheapest tier.',
+      ru: 'Веб-поиск через RouterAI (движок Exa). Оплата за запрос (~2,2 ₽); число результатов ограничено, чтобы держать дешёвый тариф.',
+    },
 
     /**
      * Cheap, network-free usability check. Mirrors the shipped provider: a key
