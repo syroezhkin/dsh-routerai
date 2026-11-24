@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-cost-routerai",
-  "version": "1.0.1",
-  "description": "Session cost in roubles beside the composer, priced from live RouterAI rates",
+  "version": "1.1.0",
+  "description": "Session cost in roubles beside the composer, summed from RouterAI billed totals",
   "type": "module",
   "main": "index.js",
   "exports": {

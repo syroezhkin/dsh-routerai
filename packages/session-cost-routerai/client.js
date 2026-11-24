@@ -10,15 +10,23 @@
  * DATA SOURCES
  * - Token counts: the `tokenUsage` session projection, owned by `dsh-token-meter`
  *   and read through the slot's `useProjection` prop. No RPC, no polling.
- * - The route's tariff, plus the key's spend and balance: this package's own host
- *   route. The session id travels as a query parameter so the host can price the
- *   model that session actually bills against. The API key never crosses here.
+ * - Billed roubles: this package's own host route, which sums RouterAI's
+ *   `total_cost` per generation. The session id travels as a query parameter so
+ *   the host answers for the right session; no key and no catalogue ever cross
+ *   to the browser.
  *
- * CACHE IS KEYED BY SESSION
- * The tariff follows the session's own route, so two sessions can legitimately
- * show different rates. A single page-wide snapshot would price one of them
- * wrongly. Each session therefore gets its own entry and its own refresh window,
- * while the subscriber set stays shared.
+ * THE FIGURE IS A BILL, NOT AN ESTIMATE
+ * The host prices nothing: it adds up what RouterAI charged. So the pill shows
+ * the sum without a `≈`, and it falls back to plain token counts while no
+ * generation has been priced yet (a fresh session, or one that started before
+ * the plugin). It never mixes the two: a rouble figure on screen always means
+ * "this is what the provider billed".
+ *
+ * REFRESH IS DRIVEN BY THE CONVERSATION
+ * A price exists only after a generation settles, so the route's answer trails
+ * the last request by a moment. The store therefore re-reads when the token
+ * projection moves (throttled) and on a slow timer, keeping the last snapshot
+ * on screen in between — a refresh never blanks the pill.
  *
  * STYLES
  * Injected as one `<style data-plugin-css>` element, matching how shipped client
@@ -70,15 +78,25 @@ window.__ModuleLoader__.load({
 		//#endregion
 
 		//#region formatting
+		/** Roubles with kopecks: the figure is a bill, so two decimals are real. */
+		const RUB = new Intl.NumberFormat("ru-RU", {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2,
+		});
+		/** Clock time for "с 23:04", the start of the priced window. */
+		const CLOCK = new Intl.DateTimeFormat("ru-RU", {
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+
 		/**
-		 * Format a rouble amount to whole roubles, or null when the value is
-		 * unusable. Kopecks are deliberately dropped: the session figure is an
-		 * estimate for a route whose tariff can move with the time of day, and the
-		 * key/balance figures are sums no one reads to two decimals.
+		 * Format a rouble amount, or null when the value is unusable. Tiny
+		 * positive bills read as "<0,01 ₽" rather than a misleading "0,00".
 		 */
 		function fmtRub(value) {
 			if (typeof value !== "number" || !Number.isFinite(value)) return null;
-			return Math.round(value) + " \u20bd";
+			if (value > 0 && value < 0.005) return "<0,01 \u20bd";
+			return RUB.format(value) + " \u20bd";
 		}
 
 		/** Compact token count: 1.2k / 45.7M / 1.05B. */
@@ -93,11 +111,13 @@ window.__ModuleLoader__.load({
 
 		//#region figures store
 		/**
-		 * How long an entry is reused before a background refresh. Matches the
-		 * host's catalogue cache; a refresh never blanks the pill, because the
-		 * previous snapshot stays published until the new one arrives.
+		 * Minimum gap between two reads of the same session. A generation is
+		 * priced asynchronously, so the poll has to trail it by a moment without
+		 * hammering the route on every re-render.
 		 */
-		const FIGURES_TTL_MS = 10 * 60 * 1000;
+		const FRESH_MS = 2500;
+		/** Slow timer for the key figures, which move independently of tokens. */
+		const POLL_MS = 15000;
 
 		/** One entry per session id: { snapshot, at, promise }. */
 		const entries = new Map();
@@ -123,14 +143,14 @@ window.__ModuleLoader__.load({
 		/**
 		 * Fetch one session's figures, coalescing concurrent callers onto a single
 		 * request. An entry inside its window is left alone; past it a refresh runs
-		 * in the background and the old snapshot keeps rendering until it lands.
-		 * @param sessionId - the session whose route should be priced.
+		 * and the old snapshot keeps rendering until the new one lands.
+		 * @param sessionId - the session whose bill should be read.
 		 */
 		function loadFigures(sessionId) {
 			if (sessionId === null || sessionId === undefined) return;
 			const entry = entryFor(sessionId);
 			if (entry.promise !== null) return;
-			if (entry.snapshot !== null && Date.now() - entry.at < FIGURES_TTL_MS) return;
+			if (entry.snapshot !== null && Date.now() - entry.at < FRESH_MS) return;
 			const url = FIGURES_PATH + "?sessionId=" + encodeURIComponent(String(sessionId));
 			entry.promise = fetch(url, { headers: { accept: "application/json" } }).then(
 				(response) => (response.ok ? response.json() : Promise.reject(new Error("HTTP " + String(response.status)))),
@@ -150,8 +170,7 @@ window.__ModuleLoader__.load({
 						entry.snapshot = {
 							ok: false,
 							reason: error instanceof Error ? error.message : String(error),
-							model: null,
-							rates: {},
+							costRub: null,
 						};
 						entry.at = Date.now();
 						notify();
@@ -191,10 +210,10 @@ window.__ModuleLoader__.load({
 		const TITLE = "\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0441\u0435\u0441\u0441\u0438\u0438 \u0432 \u0440\u0443\u0431\u043b\u044f\u0445";
 
 		/**
-		 * The pill: a rouble total over the session's own token counts, opening a
-		 * breakdown panel. Renders token counts even before the tariff arrives.
+		 * The pill: the session's billed total in roubles, opening a breakdown
+		 * panel. Falls back to token counts while no generation is priced yet.
 		 * @param props - slot props; `useProjection` reads the session projection
-		 *   and `sessionId` names the session whose route is being priced.
+		 *   and `sessionId` names the session whose bill is being read.
 		 * @returns the pill element.
 		 */
 		function SessionCost(props) {
@@ -213,9 +232,16 @@ window.__ModuleLoader__.load({
 			const output = usage ? usage.outputTokens || 0 : 0;
 			const totalTokens = uncached + cacheRead + cacheWrite + output;
 
-			// Idempotent: the per-session promise means one request at a time.
+			// Token movement is the cheapest signal that a generation just settled,
+			// so it also drives the figure refresh; the store's window coalesces it.
 			react.useEffect(() => {
 				loadFigures(sessionId);
+			}, [sessionId, totalTokens]);
+
+			// Key spend and balance move on their own schedule.
+			react.useEffect(() => {
+				const timer = setInterval(() => loadFigures(sessionId), POLL_MS);
+				return () => clearInterval(timer);
 			}, [sessionId]);
 
 			// Dismiss on outside click or Escape, matching the context ring.
@@ -236,22 +262,26 @@ window.__ModuleLoader__.load({
 				};
 			}, [open]);
 
-			// Priced by the route the HOST resolved for this session. Nothing is
-			// assumed about which model the deployment runs: an unresolved route
-			// shows tokens and no rouble figure rather than a wrong number.
-			const model = figures && figures.ok && typeof figures.model === "string" ? figures.model : null;
-			const route = model !== null && figures.rates ? figures.rates[model] : undefined;
-			let rub = null;
-			if (route) {
-				rub = uncached * route.input + cacheRead * route.cacheRead + cacheWrite * route.input + output * route.output;
-			}
+			const costRub = figures && typeof figures.costRub === "number" ? figures.costRub : null;
+			const costText = fmtRub(costRub);
+			const headline = costText === null ? fmtTokens(totalTokens) + " tok" : costText;
 
-			const headline = rub === null ? fmtTokens(totalTokens) + " tok" : "\u2248 " + fmtRub(rub);
 			const rows = [];
 			const push = (key, label, value) => {
 				rows.push(react.createElement("span", { className: "dsh-cost-k", key: "k" + key }, label));
 				rows.push(react.createElement("span", { className: "dsh-cost-v", key: "v" + key }, value));
 			};
+
+			if (figures) {
+				push("cost", "\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0441\u0435\u0441\u0441\u0438\u0438", costText || "\u2014");
+				if (figures.tracked) {
+					const total = typeof figures.totalCalls === "number" ? figures.totalCalls : 0;
+					const priced = typeof figures.pricedCalls === "number" ? figures.pricedCalls : 0;
+					push("calls", "\u0412\u044b\u0437\u043e\u0432\u044b", priced + " \u0438\u0437 " + total);
+				}
+				if (figures.model) push("model", "\u041c\u043e\u0434\u0435\u043b\u044c", figures.model);
+				if (figures.provider) push("provider", "\u041f\u0440\u043e\u0432\u0430\u0439\u0434\u0435\u0440", figures.provider);
+			}
 
 			push("tokens", "\u0422\u043e\u043a\u0435\u043d\u044b", fmtTokens(totalTokens));
 			push("in", "\u0412\u0445\u043e\u0434 (\u0431\u0435\u0437 \u043a\u044d\u0448\u0430)", fmtTokens(uncached));
@@ -259,17 +289,27 @@ window.__ModuleLoader__.load({
 			push("out", "\u0412\u044b\u0445\u043e\u0434", fmtTokens(output));
 
 			if (figures) {
-				if (model !== null) push("model", "\u041c\u043e\u0434\u0435\u043b\u044c", model);
 				push("key", "\u0420\u0430\u0441\u0445\u043e\u0434 \u043a\u043b\u044e\u0447\u0430", fmtRub(figures.keyUsageRub) || "\u2014");
 				push("bal", "\u0411\u0430\u043b\u0430\u043d\u0441", fmtRub(figures.creditsRub) || "\u2014");
 				if (!figures.ok) {
 					rows.push(react.createElement("span", { className: "dsh-cost-note", key: "n" },
-						"\u041a\u0443\u0440\u0441\u044b \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b: " + String(figures.reason || "\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e")));
+						"\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445: " + String(figures.reason || "\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e")));
+				} else if (costRub !== null) {
+					const since = typeof figures.since === "number" && figures.since > 0
+						? CLOCK.format(new Date(figures.since))
+						: null;
+					rows.push(react.createElement("span", { className: "dsh-cost-note", key: "note" },
+						"\u0421\u0443\u043c\u043c\u0430 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0439 RouterAI"
+						+ (since === null ? "" : " \u0441 " + since)
+						+ "; \u0432\u0435\u0431-\u043f\u043e\u0438\u0441\u043a \u043d\u0435 \u0443\u0447\u0442\u0451\u043d."));
+				} else if (figures.tracked && figures.totalCalls > 0) {
+					rows.push(react.createElement("span", { className: "dsh-cost-note", key: "note" },
+						"\u0426\u0435\u043d\u0430 \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0430: \u0432\u044b\u0437\u043e\u0432\u044b \u043e\u0431\u0440\u0430\u0431\u0430\u0442\u044b\u0432\u0430\u044e\u0442\u0441\u044f."));
 				}
-			}
-			if (rub !== null) {
-				rows.push(react.createElement("span", { className: "dsh-cost-note", key: "note" },
-					"\u041e\u0446\u0435\u043d\u043a\u0430 \u043f\u043e \u0442\u0430\u0440\u0438\u0444\u0443 \u043c\u043e\u0434\u0435\u043b\u0438 \u0441\u0435\u0441\u0441\u0438\u0438; \u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0440\u0430\u0441\u0445\u043e\u0434 \u2014 \u0432 \u00ab\u0420\u0430\u0441\u0445\u043e\u0434 \u043a\u043b\u044e\u0447\u0430\u00bb"));
+				if (figures.failedCalls > 0) {
+					rows.push(react.createElement("span", { className: "dsh-cost-note", key: "failed" },
+						String(figures.failedCalls) + " \u0432\u044b\u0437\u043e\u0432(\u043e\u0432) \u0431\u0435\u0437 \u0446\u0435\u043d\u044b."));
+				}
 			}
 
 			return react.createElement("div", { className: "dsh-cost-root", ref: rootRef }, [

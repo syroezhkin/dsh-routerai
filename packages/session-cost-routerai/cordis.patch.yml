@@ -16,13 +16,19 @@
     - id: session-cost
       name: 'dsh-session-cost-routerai'
       config:
-        # Credential reference for the key's own spend and balance. Rates come
-        # from the public catalogue and need no credential.
-        apiKeyEnv: DEEPSEEK_API_KEY
-        # RouterAI API root. Override to point at a compatible gateway.
+        # RouterAI API root. Must match the adapter's `llm-deepseek.baseURL`:
+        # the meter observes the harness's own model requests and prices them
+        # by the `X-Generation-Id` header, so a different root yields no data.
         baseURL: https://routerai.ru/api/v1
-        # Model to price when a session's own route cannot be resolved. `null`
-        # (the default) means "ask the session" and fall back to the first
-        # catalogue entry with a tariff. Set an explicit id only if you want one
-        # fixed route regardless of what the session runs.
-        model: null
+        # Credential reference for the per-generation cost lookup and the key's
+        # own spend and balance. Resolution order: a literal `apiKey`, then the
+        # credentials store (the Web Models page writes it), then this env name.
+        apiKeyEnv: DEEPSEEK_API_KEY
+        # Where the per-session totals survive a restart. The default is
+        # $DSH_HOME/storages/session-cost-routerai.json (usually
+        # ~/.dsh/storages/...); set an explicit path to move it, or null to keep
+        # the totals in memory only.
+        # statePath: ~/.dsh/storages/session-cost-routerai.json
+        # Turn the fetch observer off to disable billing observation entirely;
+        # the pill then shows token counts and the key figures only.
+        trackCost: true
