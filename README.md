@@ -6,7 +6,7 @@ that connect it to [RouterAI](https://routerai.ru) and price what it spends.
 | Package | What it does | Install |
 |---|---|---|
 | [`dsh-web-search-routerai`](packages/web-search-routerai) | Web search through RouterAI's server-side retrieval | `dsh plugin --profile web add dsh-web-search-routerai` |
-| [`dsh-session-cost-routerai`](packages/session-cost-routerai) | Session cost in roubles, beside the composer | `dsh plugin --profile web add dsh-session-cost-routerai` |
+| [`dsh-session-cost-routerai`](packages/session-cost-routerai) | Session cost in roubles, summed from RouterAI's billed totals | `dsh plugin --profile web add dsh-session-cost-routerai` |
 
 They share a vendor, not a dependency: install either one alone.
 
@@ -18,8 +18,9 @@ it hands the tool call back to the caller. It *does* run server-side retrieval o
 under `plugins:[{id:"web"}]`, returning structured `url_citation` annotations, and that is the route the
 provider here uses.
 
-Nothing in DSH reports a session's cost. The meter prices the session's own token counts against
-RouterAI's published tariff, and shows the key's real spend alongside it.
+Nothing in DSH reports what a session cost. The meter reads RouterAI's own per-generation `total_cost`
+and sums it, so the pill shows the bill rather than an estimate, and the key's spend sits beside it as
+the account-wide figure.
 
 ## Install
 
@@ -53,19 +54,24 @@ one, which takes precedence):
 
 - id: session-cost
   config:
-    baseURL: https://routerai.ru/api/v1
+    baseURL: https://routerai.ru/api/v1   # must match llm-deepseek.baseURL
+    trackCost: true                        # false = tokens and key figures only
 ```
 
-Both read their credential through the credentials service, so setting the key once on the Web **Models**
-page configures both.
+The meter observes the harness's own model requests, so its `baseURL` has to be the one `llm-deepseek`
+uses; a different root means no generation ids and no rouble figure. Both packages read their credential
+through the credentials service, so setting the key once on the Web **Models** page configures both.
 
 ## Cost, briefly
 
 Search bills in tiers: `2.2 RUB × ceil(max_results / 5)` per query, charged on the *requested* count. The
 provider clamps every caller to `maxResults` (default 5) to stay in the cheapest tier.
 
-The session meter is an estimate — RouterAI tariffs some routes by time of day — and the key's own spend
-is shown beside it as the authoritative figure. See each package README for detail.
+The session meter is a bill, not an estimate: it sums RouterAI's per-generation `total_cost`, so it
+agrees with the provider's own charge to the kopeck. Coverage starts when the plugin starts — the state
+file carries totals across restarts — it trails the conversation by a request, and it does not include
+web-search charges, which are billed per query outside the token bill. The key's own spend remains the
+account-wide figure that does include them. See each package README for detail.
 
 ## Development
 
